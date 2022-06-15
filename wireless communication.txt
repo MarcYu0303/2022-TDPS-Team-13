@@ -1,0 +1,155 @@
+#include "mbed.h"
+Serial rf(D1,D0);//to define the pins of uart
+DigitalInOut SCK(D5);
+DigitalInOut IO(D4);
+DigitalOut RST(D6);
+unsigned char add_time[7]={0x8c,0x8a,0x88,0x86,0x84,0x82,0x80};
+unsigned char add_cntrl = 0x8e;
+unsigned char add_charger = 0x90;
+unsigned char add_clkburst = 0xbe;
+unsigned char time_buf[8]={0x20,0x10,0x09,0x14,0x23,0x59,0x50,0x02};//initial the time
+unsigned char readtime[14] ={0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};//to storage the char
+unsigned char sec_buf=0;  
+unsigned char sec_flag=0; 
+
+void clk_init(void) 
+{
+    RST=0;          //RST low
+    SCK=0;          //SCK low
+}
+
+void clk_write_byte(unsigned char addr, unsigned char d) 
+{
+    int i;
+    RST=1;                  //awake i2c
+    addr = addr & 0xFE;   //write when LSB is 0
+    for (i = 0; i < 8; i ++) {//bit to byte
+        if (addr & 0x01) {
+            IO=1;
+            }
+        else {
+            IO=0;
+            }
+        SCK=1;      //generate sclk
+        SCK=0;
+        addr = addr >> 1;//shift to the next address
+        }   
+        
+    for (i = 0; i < 8; i ++) {
+        if (d & 0x01) {
+            IO=1;
+            }
+        else {
+            IO=0;
+            }
+        SCK=1;    
+        SCK=0;
+        d = d >> 1;
+        }
+    RST=0;      //stop i2c
+}
+
+unsigned char clk_read_byte(unsigned char addr) {
+
+    int i;
+    unsigned char temp;  
+    RST=1;                  //start i2c
+    addr = addr | 0x01;    //read when LSB is 1
+    
+    for (i = 0; i < 8; i ++) {
+        if (addr & 0x01) {
+            IO=1;
+            }
+        else {
+            IO=0;
+            }
+        SCK=1;
+        SCK=0;
+        addr = addr >> 1;
+        }   
+    
+    for (i = 0; i < 8; i ++) {
+        temp = temp >> 1;
+        if (IO) {
+            temp |= 0x80;
+            }
+        else {
+            temp &= 0x7F;
+            }
+        SCK=1;
+        SCK=0;
+        }   
+    RST=0;                  
+    return temp;//return the output
+}
+
+void clk_write_time(void) 
+{
+    clk_write_byte(add_cntrl,0x00);         //active the module to write
+    clk_write_byte(add_time[7],0x80);       //stop the clk from ticking
+    clk_write_byte(add_charger,0xa9);       //power in
+    clk_write_byte(add_time[0],time_buf[1]);      
+    clk_write_byte(add_time[1],time_buf[2]);    
+    clk_write_byte(add_time[2],time_buf[3]);      
+    clk_write_byte(add_time[3],time_buf[4]);       
+    clk_write_byte(add_time[4],time_buf[5]);      
+    clk_write_byte(add_time[5],time_buf[6]);      
+    clk_write_byte(add_time[6],time_buf[7]);  //initial the time   
+    clk_write_byte(add_cntrl,0x80);           //protect the time from changing
+}
+
+void clk_read_time(void)  
+{
+    time_buf[1]=clk_read_byte(add_time[0]);       
+    time_buf[2]=clk_read_byte(add_time[1]);      
+    time_buf[3]=clk_read_byte(add_time[2]);       
+    time_buf[4]=clk_read_byte(add_time[3]);       
+    time_buf[5]=clk_read_byte(add_time[4]);       
+    time_buf[6]=clk_read_byte(add_time[5]);
+    time_buf[7]=clk_read_byte(add_time[6]);    //read the time from the module
+}
+
+int main(){
+    rf.baud(9600);
+    clk_init();
+    clk_write_time();
+    wait(1);//to successful initialize
+    
+    while (1){
+        clk_read_time();  //to obtian the real time
+        readtime[0]=(time_buf[0]>>4);   
+        readtime[1]=(time_buf[0]&0x0F);  
+        readtime[2]=(time_buf[1]>>4);   
+        readtime[3]=(time_buf[1]&0x0F); //shift to define year
+        
+        readtime[4]=(time_buf[2]>>4);   
+        readtime[5]=(time_buf[2]&0x0F); //shift to define month
+        
+        readtime[6]=(time_buf[3]>>4);   
+        readtime[7]=(time_buf[3]&0x0F); //day
+        
+        readtime[8]=(time_buf[4]>>4);   
+        readtime[9]=(time_buf[4]&0x0F); //hour
+        
+        readtime[10]=(time_buf[5]>>4);   
+        readtime[11]=(time_buf[5]&0x0F); //min
+        
+        readtime[12]=(time_buf[6]>>4);   
+        readtime[13]=(time_buf[6]&0x0F); //s
+        
+        rf.printf("the team number is 13");
+        rf.printf("the members are:\n Ran Yu Yuan Qing Huangliang Dai Yang Xiao Yitian Wang Jiangyi Cao Junhan Gui Hongsen Zhao Youkun Jiang Qijia Wang");
+        wait(1);
+        for(int i=0;i<=3;i++){
+         rf.printf("%c",readtime[i]);
+         }
+         rf.printf("-");
+         rf.printf("%c%c-",readtime[4],readtime[5]);
+         rf.printf("%c%c-",readtime[6],readtime[7]);
+         rf.printf("%c%c-",readtime[8],readtime[9]);
+         rf.printf("%c%c-",readtime[10],readtime[11]);
+         rf.printf("%c%c-",readtime[12],readtime[13]);
+         wait(1);
+     
+    }
+    }
