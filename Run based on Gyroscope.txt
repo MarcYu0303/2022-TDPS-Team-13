@@ -1,0 +1,52 @@
+#Those script aims to let the car turn for a specified angle or run on a straight line in a given time
+import sensor, image, time, machine
+from pyb import LED,  millis
+import car
+from pid import PID
+import mpu_read
+import  utime
+from machine import I2C,Pin
+def run(degree, t):
+    i2c = I2C(scl=Pin("P4"), sda=Pin("P5"))
+    run_pid = PID(p=30, i=0, d=0)
+    turn_pid = PID(p=25, i=0, d=1)
+    sumrst=0;i=0;k=5
+
+    while(i<100):
+        accel = mpu_read.accel(i2c)
+        accel_dict = accel.get_values()
+        sumrst+=accel_dict["GyZ"]
+        i+=1
+        utime.sleep_ms(20)
+
+    rst=sumrst/101.00
+    dt=0;last_t=0;Yaw=0;print_count=0
+    current_time= millis()
+    run_time=current_time+t*1000.0
+
+    while(millis()<run_time):
+        tnow = millis()
+        dt = float(tnow - last_t)/1000.0
+        if last_t == 0 or dt > 1000:
+            dt = 0
+        last_t=tnow
+        Accel = mpu_read.accel(i2c)
+        Accel_dict = Accel.get_values()
+        Yaw+=((Accel_dict["GyZ"] -rst)*dt/131.0)
+        if(degree == 361):
+            Yaw_error=Yaw
+        else:
+            Yaw_error=Yaw - degree
+        run_output = run_pid.get_pid(Yaw_error,1)
+        turn_output= turn_pid.get_pid(Yaw_error,1)
+        if(degree == 0):
+            car.run(70+run_output, 70-run_output)
+        elif(degree == 361):
+            car.run(-70+run_output, -70-run_output)
+        else:
+            car.run(turn_output, -turn_output)
+        utime.sleep_ms(8)
+
+    Yaw=0
+    car.run(0, 0)
+    utime.sleep_ms(400)

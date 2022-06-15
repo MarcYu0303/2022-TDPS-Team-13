@@ -1,0 +1,95 @@
+import sensor, image, time, machine
+from pyb import LED,  millis
+import car
+from pid import PID
+import mpu_read
+import  utime
+from machine import I2C,Pin
+def runb():
+    i2c = I2C(scl=Pin("P4"), sda=Pin("P5"))
+    run_pid = PID(p=20, i=0, d=0.1)
+    sumrst=0;i=0;runtime=1000;
+
+    while(i<100):
+        accel = mpu_read.accel(i2c)
+        accel_dict = accel.get_values()
+        sumrst+=accel_dict["GyZ"]
+        i+=1
+        utime.sleep_ms(20)
+
+
+    rst=sumrst/101.00
+    dt=0;last_t=0;tnow=0;Yaw=0;pitch=0;onbridgetime=5000000000000;up=0;on=0;down=0;off=0;upcount=0;oncount=0;downcount=0;offcount=0;
+    down_value=0;up_value=0
+    while(tnow<=onbridgetime):
+        millis()
+        utime.sleep_ms(8)
+        tnow = millis()
+        finalt=runtime+tnow
+        dt = float(tnow - last_t)/1000.0
+        if last_t == 0 or dt > 1000:
+            dt = 0
+        last_t=tnow
+        Accel = mpu_read.accel(i2c)
+        Accel_dict = Accel.get_values()
+        Yaw+=((Accel_dict["GyZ"] -rst)*dt/131.0)
+        imu=IMU.Update_IMU(Accel_dict)
+        pitch=imu.[1]
+        Yaw_error=Yaw
+        run_output = run_pid.get_pid(Yaw_error,1)
+        car.run(100+run_output, 100-run_output)
+        if (pitch>=15):
+            upcount+=1
+            if(upcount==15):
+                up=1
+                print('up')
+                up_value=pitch
+        if up==1 and pitch<up_value-10:
+            oncount+=1
+            if(oncount==15):
+                on=1
+                up=0
+                print('on, continuing run 5s')
+                onbridgetime=millis()+1500.0
+
+    car.pulse()
+    utime.sleep_ms(3000)
+    print('start second clabrite')
+    sumrst=0;i=0;sum_Y=0
+    while(i<100):
+        accel = mpu_read.accel(i2c)
+        accel_dict = accel.get_values()
+        sumrst+=accel_dict["GyZ"]
+        sum_Y+=accel_dict["GyY"]
+        i+=1
+        utime.sleep_ms(20)
+
+    rst=sumrst/101.00
+    rst_Y=sum_Y/101.00
+    dt=0;last_t=0;Yaw=0;pitch=0;tnow=0
+    while(off==0):
+        utime.sleep_ms(8)
+        tnow = millis()
+        dt = float(tnow - last_t)/1000.0
+        if last_t == 0 or dt > 1000:
+            dt = 0
+        last_t=tnow
+        Accel = mpu_read.accel(i2c)
+        Accel_dict = Accel.get_values()
+        Yaw+=((Accel_dict["GyZ"] -rst)*dt/131.0)
+        imu=IMU.Update_IMU(Accel_dict)
+        pitch=imu.[1]
+        Yaw_error=Yaw
+        run_output = run_pid.get_pid(Yaw_error,1)
+        car.run(100+run_output, 100-run_output)
+        if pitch< -10:
+            downcount+=1
+            if downcount==15:
+                down=1
+                down_value=pitch
+                print('down')
+        if pitch-down_value>10 and down==1:
+            offcount+=1
+            if offcount==15:
+                off=1
+                print('off')

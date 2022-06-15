@@ -1,0 +1,41 @@
+import sensor, image, time, machine
+from pyb import LED,  millis
+import car
+from pid import PID
+import mpu_read
+import  utime
+from machine import I2C,Pin
+
+class command:
+    last_t=0
+    i2c = I2C(scl=Pin("P4"), sda=Pin("P5"))
+    Yaw=0
+    run_pid = PID(p=30, i=0, d=0)
+
+
+    def offset(self):
+      sumrst=0;i=0;
+      while(i<100):
+            accel = mpu_read.accel(self.i2c)
+            accel_dict = accel.get_values()
+            print(accel_dict["GyZ"])
+            sumrst+=accel_dict["GyZ"]
+            i+=1
+            utime.sleep_ms(20)
+      self.rst=sumrst/101.00
+      print('rst is',self.rst)
+
+    def run(self):
+        tnow = millis()
+        dt = float(tnow - self.last_t)/1000.0
+        if self.last_t == 0 or dt > 1000:
+            dt = 0
+        #print ('dt is:',dt)
+        self.last_t=tnow
+        Accel = mpu_read.accel(self.i2c)
+        Accel_dict = Accel.get_values()
+        self.Yaw+=((Accel_dict["GyZ"] -self.rst)*dt/131.0)
+        #print(self.Yaw)
+        run_output = self.run_pid.get_pid(self.Yaw,1)
+        car.run(90+run_output, 90-run_output)
+        utime.sleep_ms(8)
